@@ -37,49 +37,72 @@ router.post('/search', async (req, res) => {
         let message = ''; // Initialize message
         const results = []; // Initialize results array
 
-        // 1. Verificación CENTRAL (Tiempo < 100 minutos)
+        // 1. Verificación CENTRAL (Strict DB Check)
         let centralTimeMin = null;
         let centralCheckPassed = false;
+        let centralMaxMinutes = 100;
 
         try {
-            const settingsRes = await db.query("SELECT value FROM settings WHERE key = 'central_address'");
-            const centralAddress = settingsRes.rows.length > 0 ? settingsRes.rows[0].value : null;
+            // Fetch DB Settings
+            const settingsRes = await db.query("SELECT key, value FROM settings WHERE key IN ('central_max_minutes')");
+            settingsRes.rows.forEach(row => {
+                if (row.key === 'central_max_minutes') centralMaxMinutes = parseInt(row.value) || 100;
+            });
 
-            if (centralAddress) {
-                const mapsService = require('../services/maps');
-                // Origen: Central, Destino: CP
-                const destination = `${cleanQuery}, España`;
+            // Fetch Zip Data directly
+            const zipRes = await db.query("SELECT * FROM zip_codes WHERE code = $1", [cleanQuery]);
 
-                const distResults = await mapsService.getDistances([centralAddress], [destination]);
-
-                if (distResults && distResults[0] && distResults[0].elements && distResults[0].elements[0].status === 'OK') {
-                    const result = distResults[0].elements[0];
-                    centralTimeMin = Math.floor(result.duration.value / 60); // Segundos a minutos
-
-                    console.log(`⏱️ Tiempo a central: ${centralTimeMin} min`);
-
-                    if (centralTimeMin <= 100) {
-                        centralCheckPassed = true;
-                    } else {
-                        message = `NO VIABLE. Lejos de central (${centralTimeMin} min > 100 min).`;
-                    }
-                } else {
-                    message = 'NO VIABLE. No se pudo calcular ruta a central (Error API).';
-                }
-            } else {
-                // Sin configuración, asumimos OK para no bloquear
-                centralCheckPassed = true;
+            if (zipRes.rows.length === 0) {
+                // Unknown CP - we do not lookup
+                res.json({
+                    viable: false,
+                    message: "CP desconocido en base de datos. Por favor, añádalo al sistema."
+                });
+                db.query('INSERT INTO search_history (query, ip, result, user_agent) VALUES ($1, $2, $3, $4)', [cleanQuery, req.ip, "UNKNOWN_CP", req.headers['user-agent']]).catch(console.error);
+                return;
             }
-        } catch (mapErr) {
-            console.error('Error calculando ruta central:', mapErr);
+
+            const zipData = zipRes.rows[0];
+
+            if (zipData.min_to_central === null) {
+                res.json({
+                    viable: false,
+                    message: "Datos pendientes de cálculo. Consulte con administración."
+                });
+                db.query('INSERT INTO search_history (query, ip, result, user_agent) VALUES ($1, $2, $3, $4)', [cleanQuery, req.ip, "PENDING_CALC", req.headers['user-agent']]).catch(console.error);
+                return;
+            }
+
+            centralTimeMin = zipData.min_to_central;
+
+            // Use the pre-calculated viable flag OR re-check?
+            // User wants "Busco en la bbdd ... sigo adelante".
+            // Since we update viability on settings change, zipData.viable SHOULD be correct.
+            // But let's double check vs logical limit just to be safe/consistent with display.
+
+            console.log(`⏱️ Tiempo a central (DB): ${centralTimeMin} min (Límite: ${centralMaxMinutes})`);
+
+            if (centralTimeMin <= centralMaxMinutes) {
+                // Double check viable flag consistency?
+                // if (!zipData.viable) { ... } -> Might happen if limit changed but didn't save?
+                // We'll trust the logic: logic says viable.
+                centralCheckPassed = true;
+            } else {
+                message = `NO VIABLE. Lejos de central (${centralTimeMin} min > ${centralMaxMinutes} min).`;
+            }
+
+        } catch (err) {
+            console.error('Error DB Search:', err);
+            res.status(500).json({ error: 'Error interno' });
+            return;
         }
 
-        // 2. Verificación COMERCIALES (Tiempo < 30 minutos de AL MENOS UNO)
+        // 2. Verificación COMERCIALES (Strict Cache Check)
         let commercialCheckPassed = false;
         let bestCommercial = null;
 
         if (centralCheckPassed) {
-            // Comprobar caché primero
+            // Consultar SOLO la caché
             const cacheRes = await db.query(`
                 SELECT rc.*, c.name, c.city as c_city 
                 FROM routes_cache rc
@@ -93,12 +116,7 @@ router.post('/search', async (req, res) => {
                 commercialCheckPassed = true;
                 bestCommercial = cacheRes.rows[0];
             } else {
-                // Si no está en caché, usamos fallback a la info legacy del Excel
-                if (data.viable && data.assigned_commercial_id) {
-                    commercialCheckPassed = true;
-                } else {
-                    message = (message.includes('NO VIABLE')) ? message : 'NO VIABLE. Ningún comercial a < 30 min.';
-                }
+                message = 'NO VIABLE. Sin comercial asignado o en rango (Verifique precálculo).';
             }
         }
 
@@ -106,9 +124,8 @@ router.post('/search', async (req, res) => {
         if (centralCheckPassed && commercialCheckPassed) {
             data.viable = true;
             message = `✅ CLIENTE VIABLE`;
-            if (centralTimeMin) message += ` (a ${centralTimeMin} min de la central)`;
+            if (centralTimeMin) message += ` (Distancia: ${centralTimeMin} min / Máx: ${centralMaxMinutes} min)`;
 
-            // Preferimos el comercial encontrado por caché (más cercano real)
             if (bestCommercial) {
                 results.push({
                     id: bestCommercial.commercial_id,
@@ -117,22 +134,10 @@ router.post('/search', async (req, res) => {
                     duration_min: bestCommercial.duration_min,
                     commercial_city: bestCommercial.c_city
                 });
-
-                // Añadimos mensajito extra
                 message += ` - Atiende: ${bestCommercial.name} (a ${bestCommercial.duration_min} min)`;
-
-            } else if (data.commercial_name) {
-                // Fallback excel
-                results.push({
-                    id: data.assigned_commercial_id,
-                    name: data.commercial_name,
-                    distance_km: 0,
-                    duration_min: 0,
-                    commercial_city: data.city
-                });
             }
         } else {
-            data.viable = false; // Override DB
+            data.viable = false;
             if (!message.includes('NO VIABLE')) message = 'NO VIABLE. Criterios no cumplidos.';
         }
 
@@ -384,20 +389,41 @@ router.delete('/users/:id', async (req, res) => {
 
 // GET zips (with search)
 router.get('/zips', async (req, res) => {
-    const { search } = req.query;
+    const { search, page = 1, limit = 50, sortBy = 'code', order = 'ASC' } = req.query;
+
+    // Validate sort fields to prevent SQL injection
+    const allowedSortFields = ['code', 'city', 'viable'];
+    const sortField = allowedSortFields.includes(sortBy) ? sortBy : 'code';
+    const sortOrder = order.toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
+
+    const offset = (page - 1) * limit;
+
     try {
         let query = 'SELECT * FROM zip_codes';
+        let countQuery = 'SELECT COUNT(*) FROM zip_codes';
         let params = [];
+        let countParams = [];
 
         if (search) {
-            query += ' WHERE code LIKE $1 OR city ILIKE $1';
+            const whereClause = ' WHERE code LIKE $1 OR city ILIKE $1';
+            query += whereClause;
+            countQuery += whereClause;
             params.push(`%${search}%`);
+            countParams.push(`%${search}%`);
         }
 
-        query += ' ORDER BY code ASC LIMIT 100'; // Limit to avoid massive payload
+        query += ` ORDER BY ${sortField} ${sortOrder} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+        params.push(limit, offset);
 
-        const result = await db.query(query, params);
-        res.json(result.rows);
+        const [result, countResult] = await Promise.all([
+            db.query(query, params),
+            db.query(countQuery, countParams)
+        ]);
+
+        res.json({
+            data: result.rows,
+            total: parseInt(countResult.rows[0].count)
+        });
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Error fetching zips' });

@@ -10,6 +10,7 @@ const Config = () => {
     const [loading, setLoading] = useState(false);
 
     const [centralAddress, setCentralAddress] = useState('');
+    const [centralLimit, setCentralLimit] = useState('100');
     const [loadingCentral, setLoadingCentral] = useState(false);
 
     // Precalc state
@@ -26,6 +27,7 @@ const Config = () => {
             const res = await axios.get(`${API_URL}/api/settings`);
             if (res.data.logo_url) setLogoUrl(res.data.logo_url);
             if (res.data.central_address) setCentralAddress(res.data.central_address);
+            if (res.data.central_max_minutes) setCentralLimit(res.data.central_max_minutes);
         } catch (err) {
             console.error('Error fetching settings:', err);
             // Fallback for logo if settings endpoint fails (backward copatibility)
@@ -86,7 +88,11 @@ const Config = () => {
                 key: 'central_address',
                 value: centralAddress
             });
-            alert('Dirección de central guardada correctamente');
+            await axios.post(`${API_URL}/api/settings`, {
+                key: 'central_max_minutes',
+                value: centralLimit
+            });
+            alert('Configuración de central guardada correctamente');
         } catch (err) {
             console.error(err);
             alert('Error al guardar la dirección');
@@ -104,7 +110,37 @@ const Config = () => {
         // Subscribe to SSE
         const eventSource = new EventSource(`${API_URL}/api/settings/recalc/progress`);
 
-        // Start process immediately (don't wait for connection open event which might be flaky)
+        eventSource.onopen = () => {
+            console.log("SSE Connected");
+        };
+
+        eventSource.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            console.log("Progress:", data);
+            setProgress(data);
+
+            if (data.current === data.total && data.total > 0) {
+                // Finished
+                eventSource.close();
+                setProcessing(false);
+                alert('Cálculo finalizado correctamente.');
+            }
+            // If total is 0, we might want to handle it too, but backend usually sends something on finish.
+            if (data.status === 'done') { // Proposed backend change to signal explicit done
+                eventSource.close();
+                setProcessing(false);
+                alert(data.message || 'Proceso finalizado');
+            }
+        };
+
+        eventSource.onerror = (err) => {
+            console.error("SSE Error:", err);
+            // Don't close immediately unless fatal, but for this simple implementation:
+            // eventSource.close(); 
+            // setProcessing(false);
+        };
+
+        // Start process
         try {
             await axios.post(`${API_URL}/api/settings/recalc`);
         } catch (err) {
@@ -112,32 +148,7 @@ const Config = () => {
             alert('Error al iniciar cálculo');
             setProcessing(false);
             eventSource.close();
-            return;
         }
-
-        eventSource.onopen = () => {
-            console.log("SSE Connected");
-        };
-
-        eventSource.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            setProgress(data);
-
-            if (data.current === data.total) {
-                eventSource.close();
-                setProcessing(false);
-                if (data.total > 0) {
-                    alert('Cálculo finalizado correctamente.');
-                } else {
-                    alert('No hay rutas para calcular (verifique comerciales y CPs).');
-                }
-            }
-        };
-
-        eventSource.onerror = () => {
-            // eventSource.close(); // Don't close immediately on error, retry might happen
-            // But if server dies, we should stop
-        };
     };
 
     return (
@@ -211,28 +222,44 @@ const Config = () => {
                     <MapPin className="w-5 h-5 text-blue-600" />
                     Ubicación de la Central
                 </h2>
-                <div className="max-w-xl">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Dirección para cálculo de rutas (Google Maps)
-                    </label>
-                    <div className="flex gap-4">
+                <div className="max-w-xl space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Dirección para cálculo de rutas (Google Maps)
+                        </label>
                         <input
                             type="text"
                             value={centralAddress}
                             onChange={(e) => setCentralAddress(e.target.value)}
                             placeholder="Ej: Calle Principal 123, Valencia, España"
-                            className="flex-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2.5 border"
+                            className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2.5 border"
                         />
-                        <button
-                            onClick={handleSaveCentral}
-                            disabled={loadingCentral}
-                            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg font-medium flex items-center gap-2 disabled:opacity-50 transition-colors"
-                        >
-                            {loadingCentral ? 'Guardando...' : 'Guardar'}
-                        </button>
                     </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Distancia máxima para viabilidad (Minutos)
+                        </label>
+                        <div className="flex gap-4">
+                            <input
+                                type="number"
+                                value={centralLimit}
+                                onChange={(e) => setCentralLimit(e.target.value)}
+                                placeholder="100"
+                                className="block w-32 rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2.5 border"
+                            />
+                            <button
+                                onClick={handleSaveCentral}
+                                disabled={loadingCentral}
+                                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg font-medium flex items-center gap-2 disabled:opacity-50 transition-colors"
+                            >
+                                {loadingCentral ? 'Guardando...' : 'Guardar Todo'}
+                            </button>
+                        </div>
+                    </div>
+
                     <p className="mt-2 text-sm text-gray-500">
-                        Esta dirección se usará como punto de origen para calcular si el cliente está a menos de 100km.
+                        Si un cliente está a más de <strong>{centralLimit || 100} minutos</strong> de la central, se marcará como NO VIABLE automáticamente.
                     </p>
                 </div>
             </div>

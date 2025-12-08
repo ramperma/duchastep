@@ -7,6 +7,12 @@ const Zips = () => {
     const [zips, setZips] = useState([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
+    const [page, setPage] = useState(1);
+    const [limit, setLimit] = useState(25);
+    const [total, setTotal] = useState(0);
+    const [sortField, setSortField] = useState('code');
+    const [sortOrder, setSortOrder] = useState('ASC');
+
     const [formData, setFormData] = useState({ code: '', city: '' });
     const [showForm, setShowForm] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -14,11 +20,15 @@ const Zips = () => {
     const [precalcLoading, setPrecalcLoading] = useState({}); // { code: boolean }
 
     useEffect(() => {
+        setPage(1); // Reset to page 1 on search
+    }, [search]);
+
+    useEffect(() => {
         const timeoutId = setTimeout(() => {
             fetchZips();
-        }, 500); // 500ms debounce for search
+        }, 500); // 500ms debounce
         return () => clearTimeout(timeoutId);
-    }, [search]);
+    }, [search, page, sortField, sortOrder]);
 
     // Clear notification after 5 seconds
     useEffect(() => {
@@ -32,13 +42,30 @@ const Zips = () => {
         setLoading(true);
         try {
             const res = await axios.get(`${API_URL}/api/zips`, {
-                params: { search }
+                params: { search, page, limit, sortBy: sortField, order: sortOrder }
             });
-            setZips(res.data);
+            // Handle new paginated structure
+            // Backward compatibility if API wasn't updated yet (just in case)
+            if (Array.isArray(res.data)) {
+                setZips(res.data);
+                setTotal(res.data.length);
+            } else {
+                setZips(res.data.data);
+                setTotal(res.data.total);
+            }
         } catch (err) {
             console.error(err);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleSort = (field) => {
+        if (sortField === field) {
+            setSortOrder(sortOrder === 'ASC' ? 'DESC' : 'ASC');
+        } else {
+            setSortField(field);
+            setSortOrder('ASC');
         }
     };
 
@@ -185,9 +212,24 @@ const Zips = () => {
                     <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50">
                             <tr>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">CP</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ciudad</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Estado</th>
+                                <th
+                                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                                    onClick={() => handleSort('code')}
+                                >
+                                    CP {sortField === 'code' && (sortOrder === 'ASC' ? '▲' : '▼')}
+                                </th>
+                                <th
+                                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                                    onClick={() => handleSort('city')}
+                                >
+                                    Ciudad {sortField === 'city' && (sortOrder === 'ASC' ? '▲' : '▼')}
+                                </th>
+                                <th
+                                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                                    onClick={() => handleSort('viable')}
+                                >
+                                    Estado {sortField === 'viable' && (sortOrder === 'ASC' ? '▲' : '▼')}
+                                </th>
                                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
                             </tr>
                         </thead>
@@ -233,6 +275,39 @@ const Zips = () => {
                             )}
                         </tbody>
                     </table>
+
+                    {/* Pagination Controls */}
+                    <div className="bg-gray-50 px-6 py-4 border-t flex items-center justify-between">
+                        <div className="flex items-center gap-4 text-sm text-gray-600">
+                            <span>Mostrando {zips.length} de {total}</span>
+                            <select
+                                value={limit}
+                                onChange={(e) => { setLimit(Number(e.target.value)); setPage(1); }}
+                                className="border-gray-300 border rounded text-sm p-1"
+                            >
+                                <option value={25}>25 por página</option>
+                                <option value={50}>50 por página</option>
+                                <option value={100}>100 por página</option>
+                            </select>
+                        </div>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => setPage(p => Math.max(1, p - 1))}
+                                disabled={page === 1}
+                                className="px-3 py-1 bg-white border rounded hover:bg-gray-50 disabled:opacity-50"
+                            >
+                                Anterior
+                            </button>
+                            <span className="px-3 py-1 text-sm font-medium">Página {page}</span>
+                            <button
+                                onClick={() => setPage(p => p + 1)}
+                                disabled={page * limit >= total}
+                                className="px-3 py-1 bg-white border rounded hover:bg-gray-50 disabled:opacity-50"
+                            >
+                                Siguiente
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

@@ -9,14 +9,16 @@ const Layout = ({ children }) => {
     const location = useLocation();
 
     // Initialize user state from localStorage
-    const [user, setUser] = useState(() => {
-        try {
-            const userStr = localStorage.getItem('user');
-            return userStr ? JSON.parse(userStr) : null;
-        } catch (e) {
-            return null;
-        }
-    });
+    // Get user from localStorage
+    // We parse it every render to ensure it's up to date after login/logout
+    // since Layout doesn't unmount between route changes
+    let user = null;
+    try {
+        const userStr = localStorage.getItem('user');
+        user = userStr ? JSON.parse(userStr) : null;
+    } catch (e) {
+        console.error('Error parsing user from localStorage', e);
+    }
 
     const token = localStorage.getItem('token');
     const [logoUrl, setLogoUrl] = useState(null);
@@ -92,7 +94,7 @@ const Layout = ({ children }) => {
                     </Link>
 
                     {/* Only show Admin link if user is admin */}
-                    {console.log('Layout user check:', user, user?.role)}
+
                     {(user?.role === 'admin' || user?.role_name === 'admin') && (
                         <>
                             <Link

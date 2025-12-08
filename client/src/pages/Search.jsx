@@ -85,7 +85,7 @@ const Search = () => {
                         </div>
 
                         {/* Commercials List */}
-                        {results.results.length > 0 && (
+                        {results.results && results.results.length > 0 && (
                             <>
                                 <h3 className="text-gray-700 font-semibold mb-4">Comercial Asignado:</h3>
                                 <div className="space-y-4">

@@ -87,6 +87,18 @@ router.post('/settings', async (req, res) => {
             DO UPDATE SET value = EXCLUDED.value
         `, [key, value]);
 
+        // Auto-update viability if max minutes changes
+        if (key === 'central_max_minutes') {
+            const limit = parseInt(value) || 100;
+            console.log(`🔄 Actualizando viabilidad de CPs basado en nuevo límite: ${limit} min`);
+            const result = await db.query(`
+                UPDATE zip_codes 
+                SET viable = (min_to_central <= $1) 
+                WHERE min_to_central IS NOT NULL
+            `, [limit]);
+            console.log(`✅ ${result.rowCount} CPs actualizados.`);
+        }
+
         res.json({ success: true, key, value });
     } catch (err) {
         console.error(err);
