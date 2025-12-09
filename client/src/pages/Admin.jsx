@@ -66,7 +66,8 @@ const Admin = () => {
             name: commercial.name,
             address: commercial.address,
             zip_code: commercial.zip_code,
-            city: commercial.city
+            city: commercial.city,
+            google_calendar_id: commercial.google_calendar_id
         });
         setShowForm(true);
     };
@@ -74,7 +75,7 @@ const Admin = () => {
     const handleCloseForm = () => {
         setShowForm(false);
         setEditingId(null);
-        setFormData({ name: '', address: '', zip_code: '', city: '' });
+        setFormData({ name: '', address: '', zip_code: '', city: '', google_calendar_id: '' });
     };
 
     const handleSubmit = async (e) => {
@@ -160,6 +161,17 @@ const Admin = () => {
                                             onChange={e => setFormData({ ...formData, city: e.target.value })}
                                         />
                                     </div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Email Google Calendar</label>
+                                    <input
+                                        type="email"
+                                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+                                        value={formData.google_calendar_id || ''}
+                                        onChange={e => setFormData({ ...formData, google_calendar_id: e.target.value })}
+                                        placeholder="email@gmail.com"
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1">Asegúrese de compartir el calendario con el bot.</p>
                                 </div>
                                 <button
                                     type="submit"

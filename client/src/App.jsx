@@ -4,6 +4,7 @@ import Admin from './pages/Admin';
 import Users from './pages/Users';
 import Config from './pages/Config';
 import Login from './pages/Login';
+import CalendarPage from './pages/CalendarPage';
 import Zips from './pages/Zips';
 import Layout from './components/Layout';
 import './App.css'
@@ -38,6 +39,11 @@ function App() {
           <Route path="/admin/config" element={
             <PrivateRoute>
               <Config />
+            </PrivateRoute>
+          } />
+          <Route path="/calendar" element={
+            <PrivateRoute>
+              <CalendarPage />
             </PrivateRoute>
           } />
         </Routes>

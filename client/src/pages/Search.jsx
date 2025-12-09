@@ -90,7 +90,36 @@ const Search = () => {
                                 <h3 className="text-gray-700 font-semibold mb-4">Comercial Asignado:</h3>
                                 <div className="space-y-4">
                                     {results.results.map((commercial, index) => (
-                                        <ResultCard key={commercial.id} commercial={commercial} rank={index + 1} />
+                                        <ResultCard
+                                            key={commercial.id}
+                                            commercial={{
+                                                ...commercial,
+                                                onBook: async (commId, date, extraDetails = {}) => {
+                                                    try {
+                                                        const res = await axios.post(`${API_URL}/api/appointments`, {
+                                                            commercial_id: commId,
+                                                            client_data: {
+                                                                zip_code: query,
+                                                                city: 'Valencia',
+                                                                client_name: extraDetails.clientName,
+                                                                address: extraDetails.address,
+                                                                observations: extraDetails.observations
+                                                            },
+                                                            appointment_date: date
+                                                        });
+
+                                                        if (res.data.success) {
+                                                            alert('✅ Cita agendada correctamente en Google Calendar');
+                                                            window.open(res.data.link, '_blank');
+                                                        }
+                                                    } catch (err) {
+                                                        console.error(err);
+                                                        alert('❌ Error al agendar: ' + (err.response?.data?.error || err.message));
+                                                    }
+                                                }
+                                            }}
+                                            rank={index + 1}
+                                        />
                                     ))}
                                 </div>
                             </>

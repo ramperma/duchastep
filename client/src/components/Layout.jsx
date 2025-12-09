@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Search, Users, LogOut, LogIn, Shield, Settings, MapPin } from 'lucide-react';
+import { Search, Users, LogOut, LogIn, Shield, Settings, MapPin, Calendar } from 'lucide-react';
 import axios from 'axios';
 import { API_URL } from '../config';
 
 const Layout = ({ children }) => {
+    // ... no changes here ...
     const navigate = useNavigate();
     const location = useLocation();
 
@@ -92,6 +93,18 @@ const Layout = ({ children }) => {
                         <Search className="w-5 h-5" />
                         Buscador
                     </Link>
+
+                    {/* Show Calendar Link for Logged In users */}
+                    {(user || token) && (
+                        <Link
+                            to="/calendar"
+                            className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${location.pathname === '/calendar' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-50'
+                                }`}
+                        >
+                            <Calendar className="w-5 h-5" />
+                            Calendario
+                        </Link>
+                    )}
 
                     {/* Only show Admin link if user is admin */}
 
