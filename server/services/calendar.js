@@ -108,7 +108,7 @@ const createAppointment = async (commercialId, clientData, appointmentDate) => {
 const listEvents = async (isAdmin, commercialEmail) => {
     try {
         const params = {
-            calendarId: 'primary',
+            calendarId: process.env.CENTRAL_CALENDAR_ID || 'primary',
             timeMin: new Date().toISOString(), // From now
             maxResults: 250,
             singleEvents: true,
@@ -142,7 +142,8 @@ const listEvents = async (isAdmin, commercialEmail) => {
             start: e.start.dateTime || e.start.date,
             end: e.end.dateTime || e.end.date,
             description: e.description,
-            colorId: e.colorId // Pass color for frontend styling
+            colorId: e.colorId, // Pass color for frontend styling
+            htmlLink: e.htmlLink, // Link to open in Google Calendar
         }));
 
     } catch (err) {
