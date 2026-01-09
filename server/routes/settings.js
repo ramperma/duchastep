@@ -41,7 +41,7 @@ router.post('/logo', upload.single('logo'), async (req, res) => {
         return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    const fileUrl = `http://localhost:3000/uploads/${req.file.filename}`;
+    const fileUrl = `/uploads/${req.file.filename}`;
 
     try {
         // Upsert setting

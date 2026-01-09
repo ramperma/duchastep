@@ -38,3 +38,16 @@ yarn-error.log*
 *.swo
 *.sql
 !server/schema.sql
+
+# Apache/Production configs
+*.conf
+*.conf.backup
+
+# Google credentials (NEVER commit to git)
+server/credentials.json
+credentials.json
+
+# Backup files
+*.bak
+*.backup
+*.old

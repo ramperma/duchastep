@@ -87,6 +87,53 @@ const getDistancesReal = async (origins, destinations) => {
     }
 };
 
+/**
+ * Get distance matrix from a single origin to multiple destinations
+ * Used for hybrid precision recalculation
+ * @param {string} origin - Origin coordinates "lat,lng"
+ * @param {Array<string>} destinations - Array of destination coordinates "lat,lng"
+ * @returns {Array} Array of { distance_km, duration_min } for each destination
+ */
+const getDistanceMatrix = async (origin, destinations) => {
+    if (!process.env.GOOGLE_MAPS_KEY) {
+        console.warn('⚠️ No Google Maps Key found. Cannot recalculate with precision.');
+        return null;
+    }
+
+    try {
+        const apiKey = process.env.GOOGLE_MAPS_KEY;
+        const response = await axios.get('https://maps.googleapis.com/maps/api/distancematrix/json', {
+            params: {
+                origins: origin,
+                destinations: destinations.join('|'),
+                key: apiKey,
+                units: 'metric'
+            }
+        });
+
+        if (response.data.status !== 'OK' || !response.data.rows.length) {
+            console.error('Distance Matrix Error:', response.data.error_message || response.data.status);
+            return null;
+        }
+
+        const elements = response.data.rows[0].elements;
+        return elements.map((el) => {
+            if (el.status !== 'OK') {
+                return { distance_km: 999, duration_min: 999 };
+            }
+            return {
+                distance_km: (el.distance.value / 1000).toFixed(2),
+                duration_min: Math.round(el.duration.value / 60)
+            };
+        });
+
+    } catch (err) {
+        console.error('Error in getDistanceMatrix:', err.message);
+        return null;
+    }
+};
+
 module.exports = {
-    getDistances: getDistancesReal
+    getDistances: getDistancesReal,
+    getDistanceMatrix
 };

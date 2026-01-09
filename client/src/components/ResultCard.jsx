@@ -4,9 +4,37 @@ import { MapPin, Clock, User } from 'lucide-react';
 const ResultCard = ({ commercial, rank }) => {
     const { name, distance_km, duration_min } = commercial;
 
-    // Always green for assigned commercial
-    const borderColor = 'border-green-500';
-    const badgeColor = 'bg-green-100 text-green-800';
+    // Color based on rank: 1st = green, 2nd = orange, 3rd = red
+    const getRankStyle = () => {
+        switch (rank) {
+            case 1:
+                return {
+                    border: 'border-green-500',
+                    badge: 'bg-green-100 text-green-800',
+                    label: '🥇 Más cercano'
+                };
+            case 2:
+                return {
+                    border: 'border-orange-500',
+                    badge: 'bg-orange-100 text-orange-800',
+                    label: '🥈 2º más cercano'
+                };
+            case 3:
+                return {
+                    border: 'border-red-500',
+                    badge: 'bg-red-100 text-red-800',
+                    label: '🥉 3º más cercano'
+                };
+            default:
+                return {
+                    border: 'border-gray-300',
+                    badge: 'bg-gray-100 text-gray-700',
+                    label: 'Comercial'
+                };
+        }
+    };
+
+    const rankStyle = getRankStyle();
 
     const [showCalendarModal, setShowCalendarModal] = React.useState(false);
     const [appointmentDate, setAppointmentDate] = React.useState('');
@@ -20,22 +48,7 @@ const ResultCard = ({ commercial, rank }) => {
 
         setLoading(true);
         try {
-            // We need client data (zip_code, city) which should be passed down or available context
-            // Assuming 'commercial' object might not have it, user has searched for a zip.
-            // But ResultCard assumes it's displaying a result for a search.
-            // Ideally, the parent passes 'searchData' or similar. 
-            // For now, I will use a placeholder or check if props have it.
-            // Wait, ResultCard receives 'commercial' and 'rank'. 
-
-            // FIXME: Need client ZIP info here. 
-            // I will assume for now we dispatch an event or the parent handles this? 
-            // Or better, I will edit the parent (Search.jsx) to pass the zip info to ResultCard.
-            // Let's implement the UI and the callback here, but the data needs to come from props.
-
-            // Actually, I'll update the API call in the parent component instead, 
-            // or pass a callback 'onBookAppointment(commercialId, date)' to this card.
-            // That's cleaner.
-
+            // Handled by parent's onBook callback
         } catch (error) {
             console.error(error);
         } finally {
@@ -43,19 +56,9 @@ const ResultCard = ({ commercial, rank }) => {
         }
     };
 
-    // To make this robust, I will rewrite this component to accept 'onBook' prop
-    // And handle the modal internally or externally.
-    // Let's handle it internally but call the API.
-
-    // Changing approach: I will inject the API call here directly for simplicity, 
-    // BUT I need the search query (ZIP) to send to the backend.
-    // ResultCard doesn't seem to have it.
-
-    // Let's modify the component to Accept 'searchZip' and 'searchCity' as props.
-
     return (
         <>
-            <div className={`bg-white rounded-lg shadow-md p-4 border-l-4 ${borderColor} mb-4 transition-transform hover:scale-102`}>
+            <div className={`bg-white rounded-lg shadow-md p-4 border-l-4 ${rankStyle.border} mb-4 transition-transform hover:scale-102`}>
                 <div className="flex justify-between items-start">
                     <div className="flex items-center gap-3">
                         <div className="bg-blue-100 p-2 rounded-full">
@@ -64,12 +67,14 @@ const ResultCard = ({ commercial, rank }) => {
                         <div>
                             <h3 className="font-bold text-lg text-gray-800">{name}</h3>
                             <p className="text-sm text-gray-500">{commercial.commercial_city}</p>
-                            <div className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${badgeColor} mt-1`}>
-                                ASIGNADO
+                            <div className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${rankStyle.badge} mt-1`}>
+                                {rankStyle.label}
+                                {commercial.precise && <span className="ml-1">📍</span>}
                             </div>
                         </div>
                     </div>
                 </div>
+
 
                 {distance_km > 0 && (
                     <div className="grid grid-cols-2 gap-4 mt-4 mb-4">

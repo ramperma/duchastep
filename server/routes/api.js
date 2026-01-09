@@ -1,13 +1,15 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const { geocodeAddress, isPostalCode } = require('../services/geocoding');
+const mapsService = require('../services/maps');
 
 // Health check
 router.get('/status', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date() });
 });
 
-// Search endpoint
+// Search endpoint - Enhanced to support addresses and return TOP 3 commercials
 router.post('/search', async (req, res) => {
     const { query } = req.body;
 
@@ -16,136 +18,155 @@ router.post('/search', async (req, res) => {
     }
 
     try {
-        // Pad to ensure 5 digits if user enters 3 or 4
-        const cleanQuery = query.trim().padStart(5, '0');
+        let cleanQuery = query.trim();
+        let originalAddress = null;
+        let geocodedData = null;
 
-        console.log(`🔎 Buscando CP: ${cleanQuery}`);
+        // Detect if input is CP or address
+        if (isPostalCode(cleanQuery)) {
+            cleanQuery = cleanQuery.padStart(5, '0');
+            console.log(`🔎 Buscando CP: ${cleanQuery}`);
+        } else {
+            // It's an address - geocode it
+            console.log(`🔎 Buscando dirección: ${cleanQuery}`);
+            originalAddress = cleanQuery;
+            geocodedData = await geocodeAddress(cleanQuery);
 
-        // Direct lookup using the imported Excel logic
-        const queryRes = await db.query(`
-            SELECT z.*, c.name as commercial_name 
-            FROM zip_codes z
-            LEFT JOIN commercials c ON z.assigned_commercial_id = c.id
-            WHERE z.code = $1
+            if (!geocodedData || !geocodedData.postalCode) {
+                return res.status(400).json({
+                    error: 'No se pudo encontrar la dirección. Por favor, incluya el código postal o una dirección más específica.'
+                });
+            }
+
+            cleanQuery = geocodedData.postalCode.padStart(5, '0');
+            console.log(`📍 Dirección geocodificada -> CP: ${cleanQuery}`);
+        }
+
+        // Fetch DB Settings
+        let centralMaxMinutes = 100;
+        let conflictThreshold = 5; // Minutes difference to trigger recalculation
+
+        const settingsRes = await db.query("SELECT key, value FROM settings WHERE key IN ('central_max_minutes', 'conflict_threshold_minutes')");
+        settingsRes.rows.forEach(row => {
+            if (row.key === 'central_max_minutes') centralMaxMinutes = parseInt(row.value) || 100;
+            if (row.key === 'conflict_threshold_minutes') conflictThreshold = parseInt(row.value) || 5;
+        });
+
+        // Fetch Zip Data
+        const zipRes = await db.query("SELECT * FROM zip_codes WHERE code = $1", [cleanQuery]);
+
+        if (zipRes.rows.length === 0) {
+            return res.json({
+                viable: false,
+                message: "CP desconocido en base de datos. Por favor, añádalo al sistema.",
+                results: []
+            });
+        }
+
+        const zipData = zipRes.rows[0];
+
+        if (zipData.min_to_central === null) {
+            return res.json({
+                viable: false,
+                message: "Datos pendientes de cálculo. Consulte con administración.",
+                results: []
+            });
+        }
+
+        const centralTimeMin = zipData.min_to_central;
+        console.log(`⏱️ Tiempo a central (DB): ${centralTimeMin} min (Límite: ${centralMaxMinutes})`);
+
+        // Check central viability
+        if (centralTimeMin > centralMaxMinutes) {
+            return res.json({
+                viable: false,
+                message: `NO VIABLE. Lejos de central (${centralTimeMin} min > ${centralMaxMinutes} min).`,
+                results: []
+            });
+        }
+
+        // Fetch TOP 3 commercials from cache
+        const cacheRes = await db.query(`
+            SELECT rc.*, c.name, c.city as c_city, c.address as c_address, c.lat as c_lat, c.lng as c_lng
+            FROM routes_cache rc
+            JOIN commercials c ON rc.commercial_id = c.id
+            WHERE rc.origin_zip = $1 AND rc.duration_min <= 30 AND c.active = true
+            ORDER BY rc.duration_min ASC, CAST(rc.distance_km AS DECIMAL) ASC
+            LIMIT 3
         `, [cleanQuery]);
 
-        if (queryRes.rows.length === 0) {
-            return res.status(404).json({ error: 'Código Postal no encontrado en la base de datos.' });
-        }
-
-        const data = queryRes.rows[0];
-        let message = ''; // Initialize message
-        const results = []; // Initialize results array
-
-        // 1. Verificación CENTRAL (Strict DB Check)
-        let centralTimeMin = null;
-        let centralCheckPassed = false;
-        let centralMaxMinutes = 100;
-
-        try {
-            // Fetch DB Settings
-            const settingsRes = await db.query("SELECT key, value FROM settings WHERE key IN ('central_max_minutes')");
-            settingsRes.rows.forEach(row => {
-                if (row.key === 'central_max_minutes') centralMaxMinutes = parseInt(row.value) || 100;
+        if (cacheRes.rows.length === 0) {
+            return res.json({
+                viable: false,
+                message: 'NO VIABLE. Sin comercial asignado o en rango (Verifique precálculo).',
+                results: []
             });
-
-            // Fetch Zip Data directly
-            const zipRes = await db.query("SELECT * FROM zip_codes WHERE code = $1", [cleanQuery]);
-
-            if (zipRes.rows.length === 0) {
-                // Unknown CP - we do not lookup
-                res.json({
-                    viable: false,
-                    message: "CP desconocido en base de datos. Por favor, añádalo al sistema."
-                });
-                db.query('INSERT INTO search_history (query, ip, result, user_agent) VALUES ($1, $2, $3, $4)', [cleanQuery, req.ip, "UNKNOWN_CP", req.headers['user-agent']]).catch(console.error);
-                return;
-            }
-
-            const zipData = zipRes.rows[0];
-
-            if (zipData.min_to_central === null) {
-                res.json({
-                    viable: false,
-                    message: "Datos pendientes de cálculo. Consulte con administración."
-                });
-                db.query('INSERT INTO search_history (query, ip, result, user_agent) VALUES ($1, $2, $3, $4)', [cleanQuery, req.ip, "PENDING_CALC", req.headers['user-agent']]).catch(console.error);
-                return;
-            }
-
-            centralTimeMin = zipData.min_to_central;
-
-            // Use the pre-calculated viable flag OR re-check?
-            // User wants "Busco en la bbdd ... sigo adelante".
-            // Since we update viability on settings change, zipData.viable SHOULD be correct.
-            // But let's double check vs logical limit just to be safe/consistent with display.
-
-            console.log(`⏱️ Tiempo a central (DB): ${centralTimeMin} min (Límite: ${centralMaxMinutes})`);
-
-            if (centralTimeMin <= centralMaxMinutes) {
-                // Double check viable flag consistency?
-                // if (!zipData.viable) { ... } -> Might happen if limit changed but didn't save?
-                // We'll trust the logic: logic says viable.
-                centralCheckPassed = true;
-            } else {
-                message = `NO VIABLE. Lejos de central (${centralTimeMin} min > ${centralMaxMinutes} min).`;
-            }
-
-        } catch (err) {
-            console.error('Error DB Search:', err);
-            res.status(500).json({ error: 'Error interno' });
-            return;
         }
 
-        // 2. Verificación COMERCIALES (Strict Cache Check)
-        let commercialCheckPassed = false;
-        let bestCommercial = null;
+        let commercials = cacheRes.rows;
+        let usedPrecision = false;
 
-        if (centralCheckPassed) {
-            // Consultar SOLO la caché
-            const cacheRes = await db.query(`
-                SELECT rc.*, c.name, c.city as c_city 
-                FROM routes_cache rc
-                JOIN commercials c ON rc.commercial_id = c.id
-                WHERE rc.origin_zip = $1 AND rc.duration_min <= 30 AND c.active = true
-                ORDER BY rc.duration_min ASC, CAST(rc.distance_km AS DECIMAL) ASC
-                LIMIT 1
-             `, [cleanQuery]);
+        // Check for conflict (difference between 1st and 2nd < threshold)
+        if (originalAddress && commercials.length >= 2) {
+            const diff = commercials[1].duration_min - commercials[0].duration_min;
 
-            if (cacheRes.rows.length > 0) {
-                commercialCheckPassed = true;
-                bestCommercial = cacheRes.rows[0];
-            } else {
-                message = 'NO VIABLE. Sin comercial asignado o en rango (Verifique precálculo).';
+            if (diff <= conflictThreshold) {
+                console.log(`⚠️ Conflicto detectado: Diferencia ${diff} min <= ${conflictThreshold} min. Recalculando con precisión...`);
+
+                // Recalculate using exact address via Distance Matrix
+                try {
+                    const destinations = commercials.map(c => `${c.c_lat},${c.c_lng}`);
+                    const preciseRoutes = await mapsService.getDistanceMatrix(
+                        `${geocodedData.lat},${geocodedData.lng}`,
+                        destinations
+                    );
+
+                    if (preciseRoutes && preciseRoutes.length === commercials.length) {
+                        // Update commercials with precise data
+                        commercials = commercials.map((c, i) => ({
+                            ...c,
+                            duration_min: preciseRoutes[i].duration_min,
+                            distance_km: preciseRoutes[i].distance_km,
+                            precise: true
+                        }));
+
+                        // Re-sort by new duration
+                        commercials.sort((a, b) => a.duration_min - b.duration_min || a.distance_km - b.distance_km);
+                        usedPrecision = true;
+                        console.log(`✅ Rutas recalculadas con precisión`);
+                    }
+                } catch (err) {
+                    console.error('Error recalculando rutas precisas:', err.message);
+                    // Fall back to cached routes
+                }
             }
         }
 
-        // Construir Respuesta Final
-        if (centralCheckPassed && commercialCheckPassed) {
-            data.viable = true;
-            message = `✅ CLIENTE VIABLE`;
-            if (centralTimeMin) message += ` (Distancia: ${centralTimeMin} min / Máx: ${centralMaxMinutes} min)`;
+        // Build results with ranking
+        const results = commercials.map((c, index) => ({
+            id: c.commercial_id,
+            name: c.name,
+            distance_km: parseFloat(c.distance_km),
+            duration_min: c.duration_min,
+            commercial_city: c.c_city,
+            rank: index + 1,
+            precise: c.precise || false
+        }));
 
-            if (bestCommercial) {
-                results.push({
-                    id: bestCommercial.commercial_id,
-                    name: bestCommercial.name,
-                    distance_km: parseFloat(bestCommercial.distance_km),
-                    duration_min: bestCommercial.duration_min,
-                    commercial_city: bestCommercial.c_city
-                });
-                message += ` - Atiende: ${bestCommercial.name} (a ${bestCommercial.duration_min} min)`;
-            }
-        } else {
-            data.viable = false;
-            if (!message.includes('NO VIABLE')) message = 'NO VIABLE. Criterios no cumplidos.';
-        }
+        const bestCommercial = results[0];
+        let message = `✅ CLIENTE VIABLE (Distancia: ${centralTimeMin} min / Máx: ${centralMaxMinutes} min)`;
+        message += ` - Atiende: ${bestCommercial.name} (a ${bestCommercial.duration_min} min)`;
+        if (usedPrecision) message += ' [Precisión extra]';
 
         res.json({
-            viable: data.viable,
+            viable: true,
             message: message,
             results: results,
-            debug_time: centralTimeMin
+            debug_time: centralTimeMin,
+            geocoded: geocodedData ? {
+                address: geocodedData.formattedAddress,
+                postalCode: geocodedData.postalCode
+            } : null
         });
 
     } catch (err) {
@@ -546,8 +567,19 @@ router.get('/appointments', async (req, res) => {
         res.json(events);
 
     } catch (err) {
-        console.error(err);
-        res.status(401).json({ error: 'Invalid token or error fetching events' });
+        console.error('Error in /appointments:', err.message);
+
+        // Distinguish between JWT token errors and Google Calendar API errors
+        if (err.name === 'TokenExpiredError' || err.name === 'JsonWebTokenError') {
+            return res.status(401).json({ error: 'Token inválido o expirado' });
+        }
+
+        // For Google API errors or other issues, return 500 (not 401)
+        // This prevents the frontend from logging out the user
+        res.status(500).json({
+            error: 'Error al obtener eventos del calendario. Verifique la configuración de Google Calendar.',
+            details: err.message
+        });
     }
 });
 

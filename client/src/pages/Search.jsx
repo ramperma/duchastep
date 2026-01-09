@@ -36,7 +36,7 @@ const Search = () => {
                 {/* Header */}
                 <div className="text-center mb-8">
                     <h1 className="text-3xl font-bold text-gray-900">Verificador de Visitas</h1>
-                    <p className="text-gray-500 mt-2">Introduce el Código Postal del cliente para verificar viabilidad.</p>
+                    <p className="text-gray-500 mt-2">Introduce el Código Postal o la dirección del cliente.</p>
                 </div>
 
                 {/* Search Box */}
@@ -46,7 +46,7 @@ const Search = () => {
                             type="text"
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
-                            placeholder="Ej: 46001"
+                            placeholder="Ej: 46001 o Calle Mayor 15, Valencia"
                             className="flex-1 border border-gray-300 rounded-lg px-4 py-3 text-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
                             autoFocus
                         />
@@ -82,12 +82,15 @@ const Search = () => {
                                 {results.viable ? '✅ CLIENTE VIABLE' : '❌ CLIENTE NO VIABLE'}
                             </h2>
                             <p className="mt-1 font-medium">{results.message}</p>
+                            {results.geocoded && (
+                                <p className="mt-2 text-sm opacity-75">📍 {results.geocoded.address} (CP: {results.geocoded.postalCode})</p>
+                            )}
                         </div>
 
                         {/* Commercials List */}
                         {results.results && results.results.length > 0 && (
                             <>
-                                <h3 className="text-gray-700 font-semibold mb-4">Comercial Asignado:</h3>
+                                <h3 className="text-gray-700 font-semibold mb-4">Comerciales más cercanos:</h3>
                                 <div className="space-y-4">
                                     {results.results.map((commercial, index) => (
                                         <ResultCard
