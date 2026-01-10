@@ -11,6 +11,8 @@ const Config = () => {
 
     const [centralAddress, setCentralAddress] = useState('');
     const [centralLimit, setCentralLimit] = useState('100');
+    const [searchResultsCount, setSearchResultsCount] = useState('3');
+    const [conflictThreshold, setConflictThreshold] = useState('5');
     const [loadingCentral, setLoadingCentral] = useState(false);
 
     // Precalc state
@@ -28,6 +30,8 @@ const Config = () => {
             if (res.data.logo_url) setLogoUrl(res.data.logo_url);
             if (res.data.central_address) setCentralAddress(res.data.central_address);
             if (res.data.central_max_minutes) setCentralLimit(res.data.central_max_minutes);
+            if (res.data.search_results_count) setSearchResultsCount(res.data.search_results_count);
+            if (res.data.conflict_threshold_minutes) setConflictThreshold(res.data.conflict_threshold_minutes);
         } catch (err) {
             console.error('Error fetching settings:', err);
             // Fallback for logo if settings endpoint fails (backward copatibility)
@@ -92,7 +96,15 @@ const Config = () => {
                 key: 'central_max_minutes',
                 value: centralLimit
             });
-            alert('Configuración de central guardada correctamente');
+            await axios.post(`${API_URL}/api/settings`, {
+                key: 'search_results_count',
+                value: searchResultsCount
+            });
+            await axios.post(`${API_URL}/api/settings`, {
+                key: 'conflict_threshold_minutes',
+                value: conflictThreshold
+            });
+            alert('Configuración guardada correctamente');
         } catch (err) {
             console.error(err);
             alert('Error al guardar la dirección');
@@ -261,6 +273,54 @@ const Config = () => {
                     <p className="mt-2 text-sm text-gray-500">
                         Si un cliente está a más de <strong>{centralLimit || 100} minutos</strong> de la central, se marcará como NO VIABLE automáticamente.
                     </p>
+                </div>
+            </div>
+
+            {/* Configuración de Búsqueda */}
+            <div className="bg-white rounded-xl shadow p-6 mt-6">
+                <h2 className="text-xl font-semibold mb-6 flex items-center gap-2">
+                    <RefreshCw className="w-5 h-5 text-blue-600" />
+                    Configuración de Búsqueda
+                </h2>
+                <div className="max-w-xl space-y-6">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Número de comerciales a mostrar
+                        </label>
+                        <input
+                            type="number"
+                            min="1"
+                            max="10"
+                            value={searchResultsCount}
+                            onChange={(e) => setSearchResultsCount(e.target.value)}
+                            className="block w-32 rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2.5 border"
+                        />
+                        <p className="mt-1 text-xs text-gray-500">Cuántos comerciales aparecerán en el ranking de resultados (Ej: 3).</p>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Umbral de desempate (Minutos)
+                        </label>
+                        <input
+                            type="number"
+                            min="0"
+                            value={conflictThreshold}
+                            onChange={(e) => setConflictThreshold(e.target.value)}
+                            className="block w-32 rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2.5 border"
+                        />
+                        <p className="mt-1 text-xs text-gray-500">
+                            Si la diferencia entre comerciantes es menor a este tiempo, se usará Google Maps para desempatar con precisión de calle.
+                        </p>
+                    </div>
+
+                    <button
+                        onClick={handleSaveCentral}
+                        disabled={loadingCentral}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg font-medium flex items-center gap-2 disabled:opacity-50 transition-colors"
+                    >
+                        {loadingCentral ? 'Guardando...' : 'Guardar Configuración de Búsqueda'}
+                    </button>
                 </div>
             </div>
             {/* Precálculo de Rutas */}

@@ -191,6 +191,7 @@ const Admin = () => {
                             <tr>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/4">Nombre</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/3">Ubicación</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Coords</th>
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Estado</th>
                                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-32">Acciones</th>
                             </tr>
@@ -207,6 +208,17 @@ const Admin = () => {
                                             <span>
                                                 {commercial.address}, {commercial.city} ({commercial.zip_code})
                                             </span>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap">
+                                        <div className="text-xs text-gray-500">
+                                            {commercial.lat && commercial.lng ? (
+                                                <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded">
+                                                    {parseFloat(commercial.lat).toFixed(4)}, {parseFloat(commercial.lng).toFixed(4)}
+                                                </span>
+                                            ) : (
+                                                <span className="text-gray-400 italic">Pendiente</span>
+                                            )}
                                         </div>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap">

@@ -45,11 +45,15 @@ router.post('/search', async (req, res) => {
         // Fetch DB Settings
         let centralMaxMinutes = 100;
         let conflictThreshold = 5; // Minutes difference to trigger recalculation
+        let searchResultsCount = 3;
 
-        const settingsRes = await db.query("SELECT key, value FROM settings WHERE key IN ('central_max_minutes', 'conflict_threshold_minutes')");
+        const settingsRes = await db.query(
+            "SELECT key, value FROM settings WHERE key IN ('central_max_minutes', 'conflict_threshold_minutes', 'search_results_count')"
+        );
         settingsRes.rows.forEach(row => {
             if (row.key === 'central_max_minutes') centralMaxMinutes = parseInt(row.value) || 100;
             if (row.key === 'conflict_threshold_minutes') conflictThreshold = parseInt(row.value) || 5;
+            if (row.key === 'search_results_count') searchResultsCount = parseInt(row.value) || 3;
         });
 
         // Fetch Zip Data
@@ -85,15 +89,15 @@ router.post('/search', async (req, res) => {
             });
         }
 
-        // Fetch TOP 3 commercials from cache
+        // Fetch TOP X commercials from cache
         const cacheRes = await db.query(`
             SELECT rc.*, c.name, c.city as c_city, c.address as c_address, c.lat as c_lat, c.lng as c_lng
             FROM routes_cache rc
             JOIN commercials c ON rc.commercial_id = c.id
             WHERE rc.origin_zip = $1 AND rc.duration_min <= 30 AND c.active = true
             ORDER BY rc.duration_min ASC, CAST(rc.distance_km AS DECIMAL) ASC
-            LIMIT 3
-        `, [cleanQuery]);
+            LIMIT $2
+        `, [cleanQuery, searchResultsCount]);
 
         if (cacheRes.rows.length === 0) {
             return res.json({
@@ -191,10 +195,26 @@ router.get('/commercials', async (req, res) => {
 // POST new commercial
 router.post('/commercials', async (req, res) => {
     const { name, address, zip_code, city, google_calendar_id } = req.body;
+
     try {
+        // Automatic geocoding
+        let lat = null;
+        let lng = null;
+        const fullAddress = `${address}, ${zip_code} ${city}, Spain`;
+        console.log(`🌍 Geocodificando nuevo comercial: ${fullAddress}`);
+
+        const geoData = await geocodeAddress(fullAddress);
+        if (geoData) {
+            lat = geoData.lat;
+            lng = geoData.lng;
+            console.log(`📍 Coordenadas obtenidas: ${lat}, ${lng}`);
+        } else {
+            console.log(`⚠️ No se pudo geocodificar la dirección: ${fullAddress}`);
+        }
+
         const result = await db.query(
-            'INSERT INTO commercials (name, address, zip_code, city, google_calendar_id, active) VALUES ($1, $2, $3, $4, $5, true) RETURNING *',
-            [name, address, zip_code, city, google_calendar_id]
+            'INSERT INTO commercials (name, address, zip_code, city, google_calendar_id, lat, lng, active) VALUES ($1, $2, $3, $4, $5, $6, $7, true) RETURNING *',
+            [name, address, zip_code, city, google_calendar_id, lat, lng]
         );
         res.json(result.rows[0]);
     } catch (err) {
@@ -213,11 +233,24 @@ router.put('/commercials/:id', async (req, res) => {
 
         // If 'name' is present, we assume it's a full detail update
         if (name) {
+            // Automatic geocoding on update
+            let lat = null;
+            let lng = null;
+            const fullAddress = `${address}, ${zip_code} ${city}, Spain`;
+            console.log(`🌍 Geocodificando comercial editado: ${fullAddress}`);
+
+            const geoData = await geocodeAddress(fullAddress);
+            if (geoData) {
+                lat = geoData.lat;
+                lng = geoData.lng;
+                console.log(`📍 Coordenadas actualizadas: ${lat}, ${lng}`);
+            }
+
             result = await db.query(
                 `UPDATE commercials 
-                 SET name = $1, address = $2, zip_code = $3, city = $4, google_calendar_id = $5
-                 WHERE id = $6 RETURNING *`,
-                [name, address, zip_code, city, google_calendar_id, id]
+                 SET name = $1, address = $2, zip_code = $3, city = $4, google_calendar_id = $5, lat = $6, lng = $7
+                 WHERE id = $8 RETURNING *`,
+                [name, address, zip_code, city, google_calendar_id, lat, lng, id]
             );
         }
         // If only 'active' is present (and no name), treat as toggle
