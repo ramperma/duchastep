@@ -1,7 +1,3 @@
----
-description: Guía para implementar sugerencias de direcciones y optimización de rutas con Google Maps API
----
-
 # Optimización de Operativa de Rutas y Direcciones
 
 ## Requerimientos Críticos

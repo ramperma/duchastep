@@ -3,6 +3,9 @@ const router = express.Router();
 const db = require('../db');
 const { geocodeAddress, isPostalCode } = require('../services/geocoding');
 const mapsService = require('../services/maps');
+const placesService = require('../services/places');
+const routesService = require('../services/routes');
+const { filterTopN } = require('../services/haversine');
 
 // Health check
 router.get('/status', (req, res) => {
@@ -638,4 +641,203 @@ router.post('/appointments', async (req, res) => {
     }
 });
 
+// =====================================================
+// NUEVOS ENDPOINTS - Sistema de Rutas en Tiempo Real
+// =====================================================
+
+// POST /autocomplete - Sugerencias de direcciones (Places API New)
+router.post('/autocomplete', async (req, res) => {
+    const { input, sessionToken } = req.body;
+
+    if (!input || !sessionToken) {
+        return res.status(400).json({ error: 'Faltan input o sessionToken' });
+    }
+
+    // Contar solo caracteres alfanuméricos
+    const alphanumCount = (input.match(/[a-zA-Z0-9]/g) || []).length;
+    if (alphanumCount < 5) {
+        return res.json({ suggestions: [], message: 'Escribe al menos 5 caracteres' });
+    }
+
+    console.log(`🔍 [Autocomplete] Input: "${input}" (${alphanumCount} chars)`);
+
+    const result = await placesService.autocomplete(input, sessionToken);
+
+    if (result.error) {
+        return res.status(500).json({ error: result.error });
+    }
+
+    res.json(result);
+});
+
+// POST /place-details - Obtener coordenadas de lugar seleccionado
+router.post('/place-details', async (req, res) => {
+    const { placeId, sessionToken } = req.body;
+
+    if (!placeId) {
+        return res.status(400).json({ error: 'Falta placeId' });
+    }
+
+    console.log(`📍 [PlaceDetails] PlaceId: ${placeId}`);
+
+    const details = await placesService.getPlaceDetails(placeId, sessionToken);
+
+    if (!details) {
+        return res.status(500).json({ error: 'No se pudieron obtener los detalles del lugar' });
+    }
+
+    res.json(details);
+});
+
+// POST /ranking - Calcular TOP comerciales con Haversine + Routes API
+router.post('/ranking', async (req, res) => {
+    const { lat, lng, formattedAddress } = req.body;
+
+    if (!lat || !lng) {
+        return res.status(400).json({ error: 'Faltan coordenadas (lat, lng)' });
+    }
+
+    console.log(`🏆 [Ranking] Calculando para: ${formattedAddress || `${lat},${lng}`}`);
+
+    try {
+        // 1. Obtener configuración
+        let centralMaxMinutes = 100;
+        let searchResultsCount = 5;
+
+        const settingsRes = await db.query(
+            "SELECT key, value FROM settings WHERE key IN ('central_max_minutes', 'search_results_count')"
+        );
+        settingsRes.rows.forEach(row => {
+            if (row.key === 'central_max_minutes') centralMaxMinutes = parseInt(row.value) || 100;
+            if (row.key === 'search_results_count') searchResultsCount = parseInt(row.value) || 5;
+        });
+
+        // 2. Obtener sede (central)
+        const centralRes = await db.query("SELECT value FROM settings WHERE key = 'central_coords'");
+        let centralCoords = null;
+        if (centralRes.rows.length > 0 && centralRes.rows[0].value) {
+            try {
+                centralCoords = JSON.parse(centralRes.rows[0].value);
+            } catch (e) {
+                console.log('⚠️ No hay coordenadas de central configuradas');
+            }
+        }
+
+        // 3. Obtener comerciales activos con coordenadas
+        const commercialsRes = await db.query(
+            'SELECT id, name, city, lat, lng FROM commercials WHERE active = true AND lat IS NOT NULL AND lng IS NOT NULL'
+        );
+        const allCommercials = commercialsRes.rows;
+
+        if (allCommercials.length === 0) {
+            return res.json({
+                viable: false,
+                message: 'No hay comerciales activos con coordenadas',
+                results: []
+            });
+        }
+
+        // 4. Pre-filtrar con Haversine (TOP N más cercanos en línea recta)
+        const destination = { lat: parseFloat(lat), lng: parseFloat(lng) };
+        const topCommercials = filterTopN(destination, allCommercials, searchResultsCount);
+
+        console.log(`📊 [Haversine] Filtrados ${topCommercials.length} de ${allCommercials.length} comerciales`);
+
+        // 5. Preparar orígenes para Routes API (comerciales + sede si existe)
+        const originsForRoutes = topCommercials.map(c => ({
+            id: c.id,
+            name: c.name,
+            city: c.city,
+            lat: c.lat,
+            lng: c.lng,
+            type: 'commercial'
+        }));
+
+        if (centralCoords && centralCoords.lat && centralCoords.lng) {
+            originsForRoutes.push({
+                id: 0,
+                name: 'DUCHASTEP (Sede)',
+                city: 'Valencia',
+                lat: centralCoords.lat,
+                lng: centralCoords.lng,
+                type: 'headquarters'
+            });
+        }
+
+        // 6. Llamar a Routes API
+        const routeResults = await routesService.computeRouteMatrix(originsForRoutes, destination);
+
+        if (!routeResults || routeResults.length === 0) {
+            // Fallback: devolver resultados de Haversine sin tiempos reales
+            console.log('⚠️ Routes API falló, usando estimación Haversine');
+            const fallbackResults = topCommercials.map((c, i) => ({
+                id: c.id,
+                name: c.name,
+                commercial_city: c.city,
+                distance_km: c.haversineKm.toFixed(2),
+                duration_min: Math.round(c.haversineKm * 1.5), // Estimación: 1.5 min/km
+                rank: i + 1,
+                precise: false
+            }));
+
+            return res.json({
+                viable: true,
+                message: '⚠️ Usando estimación (Routes API no disponible)',
+                results: fallbackResults
+            });
+        }
+
+        // 7. Filtrar solo comerciales (excluir sede del ranking visible pero usar para viabilidad)
+        const sedeResult = routeResults.find(r => r.type === 'headquarters');
+        const commercialResults = routeResults.filter(r => r.type === 'commercial');
+
+        // Verificar viabilidad por tiempo a sede
+        let viabilityMessage = '';
+        if (sedeResult) {
+            const timeToHQ = sedeResult.durationMin;
+            if (timeToHQ > centralMaxMinutes) {
+                return res.json({
+                    viable: false,
+                    message: `❌ NO VIABLE. Lejos de central (${timeToHQ} min > ${centralMaxMinutes} min).`,
+                    results: []
+                });
+            }
+            viabilityMessage = `(Distancia a central: ${timeToHQ} min)`;
+        }
+
+        // 8. Formatear resultados
+        const results = commercialResults.slice(0, searchResultsCount).map((r, i) => ({
+            id: r.id,
+            name: r.name,
+            commercial_city: r.city,
+            distance_km: parseFloat(r.distanceKm) || 0,
+            duration_min: r.durationMin,
+            rank: i + 1,
+            precise: true
+        }));
+
+        const bestCommercial = results[0];
+        let message = `✅ CLIENTE VIABLE ${viabilityMessage}`;
+        if (bestCommercial) {
+            message += ` - Atiende: ${bestCommercial.name} (a ${bestCommercial.duration_min} min)`;
+        }
+
+        res.json({
+            viable: true,
+            message,
+            results,
+            geocoded: {
+                address: formattedAddress,
+                lat,
+                lng
+            }
+        });
+
+    } catch (err) {
+        console.error('❌ Error en /ranking:', err);
+        res.status(500).json({ error: 'Error interno al calcular ranking' });
+    }
+});
+
 module.exports = router;
+
