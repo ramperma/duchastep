@@ -34,26 +34,26 @@ const Search = () => {
         <div className="min-h-screen bg-gray-50 p-4 md:p-8">
             <div className="max-w-2xl mx-auto">
                 {/* Header */}
-                <div className="text-center mb-8">
-                    <h1 className="text-3xl font-bold text-gray-900">Verificador de Visitas</h1>
-                    <p className="text-gray-500 mt-2">Introduce el Código Postal o la dirección del cliente.</p>
+                <div className="text-center mb-6 md:mb-8">
+                    <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Verificador de Visitas</h1>
+                    <p className="text-gray-500 mt-2 text-sm md:text-base">Introduce el Código Postal o la dirección del cliente.</p>
                 </div>
 
                 {/* Search Box */}
-                <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
-                    <form onSubmit={handleSearch} className="flex gap-2">
+                <div className="bg-white rounded-xl shadow-lg p-4 md:p-6 mb-6 md:mb-8">
+                    <form onSubmit={handleSearch} className="flex flex-col md:flex-row gap-3 md:gap-2">
                         <input
                             type="text"
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
                             placeholder="Ej: 46001 o Calle Mayor 15, Valencia"
-                            className="flex-1 border border-gray-300 rounded-lg px-4 py-3 text-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                            className="flex-1 border border-gray-300 rounded-lg px-4 py-3 text-base md:text-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
                             autoFocus
                         />
                         <button
                             type="submit"
                             disabled={loading}
-                            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-3 rounded-lg flex items-center gap-2 transition-colors disabled:opacity-50"
+                            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-3 rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
                         >
                             {loading ? 'Buscando...' : (
                                 <>

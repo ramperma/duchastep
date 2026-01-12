@@ -71,11 +71,11 @@ const Users = () => {
     };
 
     return (
-        <div className="max-w-6xl mx-auto">
-            <div className="flex justify-between items-center mb-8">
+        <div className="max-w-6xl mx-auto p-4 md:p-0">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 md:mb-8">
                 <div>
-                    <h1 className="text-3xl font-bold text-gray-900">Gestión de Usuarios</h1>
-                    <p className="text-gray-500">Administra el acceso y los roles del sistema.</p>
+                    <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Gestión de Usuarios</h1>
+                    <p className="text-gray-500 text-sm md:text-base">Administra el acceso y los roles del sistema.</p>
                 </div>
                 <button
                     onClick={() => {
@@ -83,14 +83,14 @@ const Users = () => {
                         setFormData({ username: '', password: '', role_id: roles[0]?.id || '' });
                         setShowModal(true);
                     }}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2"
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm md:text-base w-full sm:w-auto justify-center"
                 >
                     <Plus className="w-5 h-5" />
                     Nuevo Usuario
                 </button>
             </div>
 
-            <div className="bg-white rounded-xl shadow overflow-hidden">
+            <div className="bg-white rounded-xl shadow overflow-x-auto">
                 <table className="w-full text-left">
                     <thead className="bg-gray-50 border-b">
                         <tr>

@@ -96,13 +96,13 @@ const Admin = () => {
     };
 
     return (
-        <div className="min-h-screen bg-gray-50 p-8">
+        <div className="min-h-screen bg-gray-50 p-4 md:p-8">
             <div className="max-w-4xl mx-auto">
-                <div className="flex justify-between items-center mb-8">
-                    <h1 className="text-3xl font-bold text-gray-900">Gestión de Comerciales</h1>
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 md:mb-8">
+                    <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Gestión de Comerciales</h1>
                     <button
                         onClick={() => { setEditingId(null); setFormData({ name: '', address: '', zip_code: '', city: '' }); setShowForm(true); }}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2"
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm md:text-base w-full sm:w-auto justify-center"
                     >
                         <Plus className="w-5 h-5" />
                         Nuevo Comercial
@@ -185,7 +185,7 @@ const Admin = () => {
                 )}
 
                 {/* List */}
-                <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+                <div className="bg-white rounded-xl shadow-sm overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50">
                             <tr>

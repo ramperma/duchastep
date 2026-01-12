@@ -164,9 +164,9 @@ const Config = () => {
     };
 
     return (
-        <div className="max-w-4xl mx-auto">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Configuración</h1>
-            <p className="text-gray-500 mb-8">Personaliza la apariencia de la aplicación.</p>
+        <div className="max-w-4xl mx-auto p-4 md:p-0">
+            <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">Configuración</h1>
+            <p className="text-gray-500 mb-6 md:mb-8 text-sm md:text-base">Personaliza la apariencia de la aplicación.</p>
 
             <div className="bg-white rounded-xl shadow p-6">
                 <h2 className="text-xl font-semibold mb-6 flex items-center gap-2">
