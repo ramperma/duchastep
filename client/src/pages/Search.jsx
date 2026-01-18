@@ -341,6 +341,7 @@ const Search = () => {
                                                 }
                                             }}
                                             rank={index + 1}
+                                            closeThreshold={results.closeThresholdMinutes || 15}
                                         />
                                     ))}
                                 </div>

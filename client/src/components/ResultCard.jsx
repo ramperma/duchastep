@@ -1,37 +1,48 @@
 import React from 'react';
 import { MapPin, Clock, User } from 'lucide-react';
 
-const ResultCard = ({ commercial, rank }) => {
+const ResultCard = ({ commercial, rank, closeThreshold = 15 }) => {
     const { name, distance_km, duration_min } = commercial;
 
-    // Color based on rank: 1st = green, 2nd = orange, 3rd = red
+    // Color based on time: duration <= closeThreshold = green, else orange/red
+    // Label based on rank: 1st, 2nd, 3rd, etc.
     const getRankStyle = () => {
+        // Determine color based on time threshold
+        let colorStyle;
+        if (duration_min <= closeThreshold) {
+            colorStyle = {
+                border: 'border-green-500',
+                badge: 'bg-green-100 text-green-800'
+            };
+        } else if (duration_min <= closeThreshold * 2) {
+            colorStyle = {
+                border: 'border-orange-500',
+                badge: 'bg-orange-100 text-orange-800'
+            };
+        } else {
+            colorStyle = {
+                border: 'border-red-500',
+                badge: 'bg-red-100 text-red-800'
+            };
+        }
+
+        // Determine label based on rank
+        let label;
         switch (rank) {
             case 1:
-                return {
-                    border: 'border-green-500',
-                    badge: 'bg-green-100 text-green-800',
-                    label: '🥇 Más cercano'
-                };
+                label = '🥇 Más cercano';
+                break;
             case 2:
-                return {
-                    border: 'border-orange-500',
-                    badge: 'bg-orange-100 text-orange-800',
-                    label: '🥈 2º más cercano'
-                };
+                label = '🥈 2º más cercano';
+                break;
             case 3:
-                return {
-                    border: 'border-red-500',
-                    badge: 'bg-red-100 text-red-800',
-                    label: '🥉 3º más cercano'
-                };
+                label = '🥉 3º más cercano';
+                break;
             default:
-                return {
-                    border: 'border-gray-300',
-                    badge: 'bg-gray-100 text-gray-700',
-                    label: 'Comercial'
-                };
+                label = `${rank}º comercial`;
         }
+
+        return { ...colorStyle, label };
     };
 
     const rankStyle = getRankStyle();

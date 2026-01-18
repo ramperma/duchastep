@@ -13,6 +13,7 @@ const Config = () => {
     const [centralLimit, setCentralLimit] = useState('100');
     const [searchResultsCount, setSearchResultsCount] = useState('3');
     const [conflictThreshold, setConflictThreshold] = useState('5');
+    const [closeThreshold, setCloseThreshold] = useState('15');
     const [loadingCentral, setLoadingCentral] = useState(false);
 
     // Precalc state
@@ -32,6 +33,7 @@ const Config = () => {
             if (res.data.central_max_minutes) setCentralLimit(res.data.central_max_minutes);
             if (res.data.search_results_count) setSearchResultsCount(res.data.search_results_count);
             if (res.data.conflict_threshold_minutes) setConflictThreshold(res.data.conflict_threshold_minutes);
+            if (res.data.close_threshold_minutes) setCloseThreshold(res.data.close_threshold_minutes);
         } catch (err) {
             console.error('Error fetching settings:', err);
             // Fallback for logo if settings endpoint fails (backward copatibility)
@@ -103,6 +105,10 @@ const Config = () => {
             await axios.post(`${API_URL}/api/settings`, {
                 key: 'conflict_threshold_minutes',
                 value: conflictThreshold
+            });
+            await axios.post(`${API_URL}/api/settings`, {
+                key: 'close_threshold_minutes',
+                value: closeThreshold
             });
             alert('Configuración guardada correctamente');
         } catch (err) {
@@ -311,6 +317,23 @@ const Config = () => {
                         />
                         <p className="mt-1 text-xs text-gray-500">
                             Si la diferencia entre comerciantes es menor a este tiempo, se usará Google Maps para desempatar con precisión de calle.
+                        </p>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Tiempo mínimo para considerar cercano (Minutos)
+                        </label>
+                        <input
+                            type="number"
+                            min="0"
+                            value={closeThreshold}
+                            onChange={(e) => setCloseThreshold(e.target.value)}
+                            className="block w-32 rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2.5 border"
+                        />
+                        <p className="mt-1 text-xs text-gray-500">
+                            Comerciales a menos de este tiempo aparecerán en <span className="text-green-600 font-semibold">verde</span>.
+                            Los demás en <span className="text-orange-600 font-semibold">naranja</span> o <span className="text-red-600 font-semibold">rojo</span>.
                         </p>
                     </div>
 

@@ -49,14 +49,16 @@ router.post('/search', async (req, res) => {
         let centralMaxMinutes = 100;
         let conflictThreshold = 5; // Minutes difference to trigger recalculation
         let searchResultsCount = 3;
+        let closeThresholdMinutes = 15;
 
         const settingsRes = await db.query(
-            "SELECT key, value FROM settings WHERE key IN ('central_max_minutes', 'conflict_threshold_minutes', 'search_results_count')"
+            "SELECT key, value FROM settings WHERE key IN ('central_max_minutes', 'conflict_threshold_minutes', 'search_results_count', 'close_threshold_minutes')"
         );
         settingsRes.rows.forEach(row => {
             if (row.key === 'central_max_minutes') centralMaxMinutes = parseInt(row.value) || 100;
             if (row.key === 'conflict_threshold_minutes') conflictThreshold = parseInt(row.value) || 5;
             if (row.key === 'search_results_count') searchResultsCount = parseInt(row.value) || 3;
+            if (row.key === 'close_threshold_minutes') closeThresholdMinutes = parseInt(row.value) || 15;
         });
 
         // Fetch Zip Data
@@ -169,6 +171,7 @@ router.post('/search', async (req, res) => {
             viable: true,
             message: message,
             results: results,
+            closeThresholdMinutes,
             debug_time: centralTimeMin,
             geocoded: geocodedData ? {
                 address: geocodedData.formattedAddress,
@@ -703,13 +706,15 @@ router.post('/ranking', async (req, res) => {
         // 1. Obtener configuración
         let centralMaxMinutes = 100;
         let searchResultsCount = 5;
+        let closeThresholdMinutes = 15;
 
         const settingsRes = await db.query(
-            "SELECT key, value FROM settings WHERE key IN ('central_max_minutes', 'search_results_count')"
+            "SELECT key, value FROM settings WHERE key IN ('central_max_minutes', 'search_results_count', 'close_threshold_minutes')"
         );
         settingsRes.rows.forEach(row => {
             if (row.key === 'central_max_minutes') centralMaxMinutes = parseInt(row.value) || 100;
             if (row.key === 'search_results_count') searchResultsCount = parseInt(row.value) || 5;
+            if (row.key === 'close_threshold_minutes') closeThresholdMinutes = parseInt(row.value) || 15;
         });
 
         // 2. Obtener sede (central)
@@ -783,7 +788,8 @@ router.post('/ranking', async (req, res) => {
             return res.json({
                 viable: true,
                 message: '⚠️ Usando estimación (Routes API no disponible)',
-                results: fallbackResults
+                results: fallbackResults,
+                closeThresholdMinutes
             });
         }
 
@@ -826,6 +832,7 @@ router.post('/ranking', async (req, res) => {
             viable: true,
             message,
             results,
+            closeThresholdMinutes,
             geocoded: {
                 address: formattedAddress,
                 lat,
