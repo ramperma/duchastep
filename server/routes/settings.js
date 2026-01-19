@@ -4,6 +4,7 @@ const db = require('../db');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { geocodeAddress } = require('../services/geocoding');
 
 // Configure Multer
 const storage = multer.diskStorage({
@@ -103,6 +104,28 @@ router.post('/settings', async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Error saving setting' });
+    }
+});
+
+// POST geocode address
+router.post('/settings/geocode', async (req, res) => {
+    const { address } = req.body;
+    if (!address) return res.status(400).json({ error: 'Address is required' });
+
+    try {
+        const geoData = await geocodeAddress(address);
+        if (geoData) {
+            res.json({
+                lat: geoData.lat,
+                lng: geoData.lng,
+                formattedAddress: geoData.formattedAddress
+            });
+        } else {
+            res.status(404).json({ error: 'No se pudo encontrar la ubicación' });
+        }
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Error en el servicio de geocodificación' });
     }
 });
 

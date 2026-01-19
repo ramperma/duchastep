@@ -11,9 +11,13 @@ const Config = () => {
 
     const [centralAddress, setCentralAddress] = useState('');
     const [centralLimit, setCentralLimit] = useState('100');
+    const [centralLat, setCentralLat] = useState('');
+    const [centralLng, setCentralLng] = useState('');
     const [searchResultsCount, setSearchResultsCount] = useState('3');
     const [conflictThreshold, setConflictThreshold] = useState('5');
     const [closeThreshold, setCloseThreshold] = useState('15');
+    const [autocompleteDebounce, setAutocompleteDebounce] = useState('600');
+    const [autocompleteMinChars, setAutocompleteMinChars] = useState('5');
     const [loadingCentral, setLoadingCentral] = useState(false);
 
     // Precalc state
@@ -31,9 +35,22 @@ const Config = () => {
             if (res.data.logo_url) setLogoUrl(res.data.logo_url);
             if (res.data.central_address) setCentralAddress(res.data.central_address);
             if (res.data.central_max_minutes) setCentralLimit(res.data.central_max_minutes);
+
+            if (res.data.central_coords) {
+                try {
+                    const coords = JSON.parse(res.data.central_coords);
+                    setCentralLat(coords.lat || '');
+                    setCentralLng(coords.lng || '');
+                } catch (e) {
+                    console.error('Error parseando coordenadas:', e);
+                }
+            }
+
             if (res.data.search_results_count) setSearchResultsCount(res.data.search_results_count);
             if (res.data.conflict_threshold_minutes) setConflictThreshold(res.data.conflict_threshold_minutes);
             if (res.data.close_threshold_minutes) setCloseThreshold(res.data.close_threshold_minutes);
+            if (res.data.autocomplete_debounce_ms) setAutocompleteDebounce(res.data.autocomplete_debounce_ms);
+            if (res.data.autocomplete_min_chars) setAutocompleteMinChars(res.data.autocomplete_min_chars);
         } catch (err) {
             console.error('Error fetching settings:', err);
             // Fallback for logo if settings endpoint fails (backward copatibility)
@@ -99,6 +116,10 @@ const Config = () => {
                 value: centralLimit
             });
             await axios.post(`${API_URL}/api/settings`, {
+                key: 'central_coords',
+                value: JSON.stringify({ lat: parseFloat(centralLat), lng: parseFloat(centralLng) })
+            });
+            await axios.post(`${API_URL}/api/settings`, {
                 key: 'search_results_count',
                 value: searchResultsCount
             });
@@ -110,10 +131,41 @@ const Config = () => {
                 key: 'close_threshold_minutes',
                 value: closeThreshold
             });
+            await axios.post(`${API_URL}/api/settings`, {
+                key: 'autocomplete_debounce_ms',
+                value: autocompleteDebounce
+            });
+            await axios.post(`${API_URL}/api/settings`, {
+                key: 'autocomplete_min_chars',
+                value: autocompleteMinChars
+            });
             alert('Configuración guardada correctamente');
         } catch (err) {
             console.error(err);
             alert('Error al guardar la dirección');
+        } finally {
+            setLoadingCentral(false);
+        }
+    };
+
+    const handleGeocodeCentral = async () => {
+        if (!centralAddress) return;
+        setLoadingCentral(true);
+        try {
+            const res = await axios.post(`${API_URL}/api/settings/geocode`, {
+                address: centralAddress
+            });
+            if (res.data.lat && res.data.lng) {
+                setCentralLat(res.data.lat);
+                setCentralLng(res.data.lng);
+                // Si la dirección formateada es más completa, la actualizamos opcionalmente
+                if (res.data.formattedAddress) {
+                    setCentralAddress(res.data.formattedAddress);
+                }
+            }
+        } catch (err) {
+            console.error('Error geocodificando:', err);
+            alert('No se pudo encontrar la dirección en Google Maps');
         } finally {
             setLoadingCentral(false);
         }
@@ -245,13 +297,54 @@ const Config = () => {
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                             Dirección para cálculo de rutas (Google Maps)
                         </label>
-                        <input
-                            type="text"
-                            value={centralAddress}
-                            onChange={(e) => setCentralAddress(e.target.value)}
-                            placeholder="Ej: Calle Principal 123, Valencia, España"
-                            className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2.5 border"
-                        />
+                        <div className="flex gap-2">
+                            <input
+                                type="text"
+                                value={centralAddress}
+                                onChange={(e) => setCentralAddress(e.target.value)}
+                                onBlur={handleGeocodeCentral}
+                                placeholder="Ej: Calle Principal 123, Valencia, España"
+                                className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2.5 border"
+                            />
+                            <button
+                                onClick={handleGeocodeCentral}
+                                disabled={loadingCentral || !centralAddress}
+                                className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2.5 rounded-lg font-medium flex items-center gap-2 transition-colors flex-shrink-0"
+                                title="Obtener coordenadas de Google Maps"
+                            >
+                                {loadingCentral ? <RefreshCw className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />}
+                                Geolocalizar
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Latitud
+                            </label>
+                            <input
+                                type="number"
+                                step="any"
+                                value={centralLat}
+                                onChange={(e) => setCentralLat(e.target.value)}
+                                placeholder="39.4699"
+                                className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2.5 border bg-gray-50 font-mono text-sm"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Longitud
+                            </label>
+                            <input
+                                type="number"
+                                step="any"
+                                value={centralLng}
+                                onChange={(e) => setCentralLng(e.target.value)}
+                                placeholder="-0.3763"
+                                className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2.5 border bg-gray-50 font-mono text-sm"
+                            />
+                        </div>
                     </div>
 
                     <div>
@@ -335,6 +428,40 @@ const Config = () => {
                             Comerciales a menos de este tiempo aparecerán en <span className="text-green-600 font-semibold">verde</span>.
                             Los demás en <span className="text-orange-600 font-semibold">naranja</span> o <span className="text-red-600 font-semibold">rojo</span>.
                         </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Debounce de Autocompletado (ms)
+                            </label>
+                            <input
+                                type="number"
+                                min="0"
+                                step="100"
+                                value={autocompleteDebounce}
+                                onChange={(e) => setAutocompleteDebounce(e.target.value)}
+                                className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2.5 border"
+                            />
+                            <p className="mt-1 text-xs text-gray-500">
+                                Tiempo de espera (en milisegundos) tras dejar de escribir antes de pedir sugerencias a Google.
+                            </p>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Caracteres Mínimos para buscar
+                            </label>
+                            <input
+                                type="number"
+                                min="1"
+                                value={autocompleteMinChars}
+                                onChange={(e) => setAutocompleteMinChars(e.target.value)}
+                                className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2.5 border"
+                            />
+                            <p className="mt-1 text-xs text-gray-500">
+                                Nº de caracteres que el usuario debe escribir para que empiecen a aparecer sugerencias.
+                            </p>
+                        </div>
                     </div>
 
                     <button

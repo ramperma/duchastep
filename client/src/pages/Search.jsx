@@ -41,8 +41,30 @@ const Search = () => {
     const inputRef = useRef(null);
     const suggestionsRef = useRef(null);
 
-    // Debounce de 600ms para el input
-    const debouncedQuery = useDebouncedValue(query, 600);
+    // Configuración dinámica
+    const [config, setConfig] = useState({
+        debounceMs: 600,
+        minChars: 5
+    });
+
+    // Cargar configuración al montar
+    useEffect(() => {
+        const fetchConfig = async () => {
+            try {
+                const res = await axios.get(`${API_URL}/api/settings`);
+                setConfig({
+                    debounceMs: parseInt(res.data.autocomplete_debounce_ms) || 600,
+                    minChars: parseInt(res.data.autocomplete_min_chars) || 5
+                });
+            } catch (err) {
+                console.error('Error cargando config de búsqueda:', err);
+            }
+        };
+        fetchConfig();
+    }, []);
+
+    // Debounce dinámico basado en la config cargada
+    const debouncedQuery = useDebouncedValue(query, config.debounceMs);
 
     // Throttle: evitar más de 1 llamada por segundo
     const lastCallRef = useRef(0);
@@ -67,7 +89,7 @@ const Search = () => {
 
             // Contar solo caracteres alfanuméricos
             const alphanumCount = (debouncedQuery.match(/[a-zA-Z0-9]/g) || []).length;
-            if (alphanumCount < 5) {
+            if (alphanumCount < config.minChars) {
                 setSuggestions([]);
                 setShowSuggestions(false);
                 return;
