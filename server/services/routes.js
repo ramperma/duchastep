@@ -100,8 +100,13 @@ async function computeRouteMatrix(origins, destination) {
             };
         });
 
-        // Ordenar por duración
-        mapped.sort((a, b) => a.durationMin - b.durationMin);
+        // Ordenar por duración y distancia (como desempate)
+        mapped.sort((a, b) => {
+            if (a.durationMin !== b.durationMin) {
+                return a.durationMin - b.durationMin;
+            }
+            return (a.distanceMeters || 0) - (b.distanceMeters || 0);
+        });
 
         return mapped;
 
