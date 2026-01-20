@@ -20,8 +20,10 @@ const Login = () => {
             localStorage.setItem('token', res.data.token);
             localStorage.setItem('user', JSON.stringify(res.data.user));
 
-            // Redirect to admin
-            navigate('/admin');
+            // Redirect based on role
+            const user = res.data.user;
+            const isAdmin = user.role === 'admin' || user.role_name === 'admin';
+            navigate(isAdmin ? '/admin' : '/');
         } catch (err) {
             setError('Usuario o contraseña incorrectos');
         }

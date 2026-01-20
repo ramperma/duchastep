@@ -58,8 +58,8 @@ const Layout = ({ children }) => {
                 Buscador
             </Link>
 
-            {/* Calendar Link (TEMPORARILY DISABLED) */}
-            {(user || token) && (
+            {/* Calendar Link (TEMPORARILY DISABLED) - Restricted to Admin */}
+            {(user?.role === 'admin' || user?.role_name === 'admin') && (
                 <div
                     className="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-400 cursor-not-allowed opacity-50"
                     title="Módulo desactivado temporalmente"

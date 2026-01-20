@@ -41,6 +41,24 @@ const PrivateRoute = ({ children }) => {
   return token ? children : <Navigate to="/login" />;
 };
 
+const AdminRoute = ({ children }) => {
+  const token = localStorage.getItem('token');
+  let user = null;
+  try {
+    const userStr = localStorage.getItem('user');
+    user = userStr ? JSON.parse(userStr) : null;
+  } catch (e) {
+    console.error('Error parsing user', e);
+  }
+
+  const isAdmin = user?.role === 'admin' || user?.role_name === 'admin';
+
+  if (!token) return <Navigate to="/login" />;
+  if (!isAdmin) return <Navigate to="/" />;
+
+  return children;
+};
+
 function App() {
   return (
     <Router>
@@ -50,29 +68,29 @@ function App() {
             <Route path="/" element={<Search />} />
             <Route path="/login" element={<Login />} />
             <Route path="/admin" element={
-              <PrivateRoute>
+              <AdminRoute>
                 <Admin />
-              </PrivateRoute>
+              </AdminRoute>
             } />
             <Route path="/admin/zips" element={
-              <PrivateRoute>
+              <AdminRoute>
                 <Zips />
-              </PrivateRoute>
+              </AdminRoute>
             } />
             <Route path="/admin/users" element={
-              <PrivateRoute>
+              <AdminRoute>
                 <Users />
-              </PrivateRoute>
+              </AdminRoute>
             } />
             <Route path="/admin/config" element={
-              <PrivateRoute>
+              <AdminRoute>
                 <Config />
-              </PrivateRoute>
+              </AdminRoute>
             } />
             <Route path="/calendar" element={
-              <PrivateRoute>
+              <AdminRoute>
                 <CalendarPage />
-              </PrivateRoute>
+              </AdminRoute>
             } />
           </Routes>
         </Layout>
